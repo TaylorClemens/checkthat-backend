@@ -35,10 +35,11 @@ app.post("/analyze", async (req, res) => {
     res.json({ transcript: transcript.text, analysis: analysis.choices[0].message.content });
   });
 });
+app.get('/test', (req, res) => {
+  res.json({ message: 'Backend is live!' });
+});
 
 app.listen(process.env.PORT || 3000, () => {
   console.log(`✅ Server running on port ${process.env.PORT || 3000}`);
 });
-app.get('/test', (req, res) => {
-  res.json({ message: 'Backend is live!' });
-});
+
