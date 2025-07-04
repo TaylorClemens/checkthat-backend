@@ -1,31 +1,40 @@
 const express = require("express");
-const app = express();
 const fs = require("fs");
 const ytdl = require("ytdl-core");
-const { OpenAI } = require("openai");
-require("dotenv").config();
+const OpenAI = require("openai");
+const bodyParser = require("body-parser");
 
-app.use(express.json());
+const app = express();
+const port = process.env.PORT || 10000;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+app.use(bodyParser.json());
+
+app.get("/test", (req, res) => {
+  res.json({ message: "Backend is live!" });
+});
+
 app.post("/analyze", async (req, res) => {
-  const videoUrl = req.body.url;
+  let videoUrl = req.body.url;
   const fileName = "audio.mp3";
 
-  try {
-    const audioStream = ytdl(videoUrl, {
-      filter: "audioonly",
-      requestOptions: {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        },
-      },
-    });
+  // Convert Shorts link to standard format if necessary
+  if (videoUrl.includes("shorts")) {
+    const id = videoUrl.split("/").pop().split("?")[0];
+    videoUrl = `https://www.youtube.com/watch?v=${id}`;
+  }
 
+  try {
+    // Check if video is playable
+    const info = await ytdl.getInfo(videoUrl);
+    if (!info.videoDetails || !info.videoDetails.isPlayable) {
+      return res.status(400).json({ error: "Video is not playable." });
+    }
+
+    const audioStream = ytdl(videoUrl, { filter: "audioonly" });
     const fileStream = fs.createWriteStream(fileName);
 
     audioStream.pipe(fileStream);
@@ -41,10 +50,7 @@ app.post("/analyze", async (req, res) => {
         const analysis = await openai.chat.completions.create({
           model: "gpt-4",
           messages: [
-            {
-              role: "system",
-              content: "You analyze video transcripts for truthfulness.",
-            },
+            { role: "system", content: "You analyze video transcripts for truthfulness." },
             { role: "user", content: transcript.text },
           ],
         });
@@ -54,24 +60,19 @@ app.post("/analyze", async (req, res) => {
           analysis: analysis.choices[0].message.content,
         });
       } catch (err) {
-        res.status(500).send("Transcription or GPT error: " + err.message);
+        res.status(500).json({ error: "Transcription or GPT error: " + err.message });
       }
     });
 
     fileStream.on("error", (err) => {
-      res.status(500).send("File writing error: " + err.message);
+      res.status(500).json({ error: "File writing error: " + err.message });
     });
+
   } catch (err) {
-    res.status(500).send("ytdl streaming error: " + err.message);
+    res.status(500).json({ error: "Video processing error: " + err.message });
   }
 });
 
-// Health check/test route
-app.get("/test", (req, res) => {
-  res.json({ message: "Backend is live!" });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
