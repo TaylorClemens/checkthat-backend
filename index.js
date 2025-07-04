@@ -2,15 +2,14 @@ const express = require("express");
 const app = express();
 const { exec } = require("child_process");
 const fs = require("fs");
-const { Configuration, OpenAIApi } = require("openai");
 
 require("dotenv").config();
 app.use(express.json());
 
-const configuration = new Configuration({
+const OpenAI = require("openai");
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 app.post("/analyze", async (req, res) => {
   const videoUrl = req.body.url;
@@ -20,16 +19,20 @@ app.post("/analyze", async (req, res) => {
     if (error) return res.status(500).send("Download error");
 
     const audio = fs.createReadStream(fileName);
-    const transcript = await openai.createTranscription(audio, "whisper-1");
-    const analysis = await openai.createChatCompletion({
+    const transcript = await openai.audio.transcriptions.create({
+      file: audio,
+      model: "whisper-1",
+    });
+
+    const analysis = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         { role: "system", content: "You analyze video transcripts for truthfulness." },
-        { role: "user", content: transcript.data.text },
+        { role: "user", content: transcript.text },
       ],
     });
 
-    res.json({ transcript: transcript.data.text, analysis: analysis.data.choices[0].message.content });
+    res.json({ transcript: transcript.text, analysis: analysis.choices[0].message.content });
   });
 });
 
